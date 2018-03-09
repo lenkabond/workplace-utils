@@ -5,6 +5,7 @@ import time
 import re
 from sys import stdout, stderr
 from datetime import datetime
+import traceback
 
 import requests
 from selenium import webdriver
@@ -16,12 +17,22 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+def notify_of_config_error():
+    stderr.write("Please insert valid data into the config file (filter_disabler.cfg).\n")
+    stderr.write("You can find a sample config here: https://github.com/lenkabond/workplace-utils/blob/master/filter_disabler.cfg.\n")
+    exit(1)
+
 def get_config_info():
     config = configparser.ConfigParser()
-    config.read('useless_filters.cfg')
+    config.read('filter_disabler.cfg')
     url = config.get('URL', 'stats_url')
     username = config.get('LOGIN DATA', 'username')
     password = config.get('LOGIN DATA', 'password')
+    if username is None or password == '' or url == '':
+        raise ValueError 
+    if username.find('YOUR') + password.find('YOUR') + url.find('YOUR') > -3:
+        raise ValueError 
+    
     return (url, username, password)
 
 
@@ -31,6 +42,7 @@ def get_useless_filters(headers, stats_url, username, password):
     try:
         r = requests.get(stats_url, headers=headers, auth=(username, password), verify=False)
     except:
+        traceback.print_exc(file=stderr)
         stderr.write("Couldn't open the link. Please check the info in the config file or your internet connection.\n")
         exit(1)
     soup = BeautifulSoup(r.text, "html.parser")
@@ -99,6 +111,8 @@ def disable_old_only(headers, filter_links, username, password, old_year):
                 stdout.write('Old: ' + filter_link + ' Filter was disabled and moved.\n')
                 counter += 1
             except:
+                traceback.print_exc(file=stderr)
+                stderr.write('Old: ' + filter_link + ' Filter was not disabled. Please take a look at filter_disabling_errors.txt\n')
                 with open('filter_disabling_errors.txt', 'w') as f:
                     f.write(filter_link)
         
@@ -111,13 +125,13 @@ def main():
     try:
         stats_url, username, password = get_config_info()
     except:
-        stderr.write("Couldn't parse the config file. Please make sure it's in the right format.\n")
-        exit(1)
+        notify_of_config_error()
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
     filter_links = get_useless_filters(headers, stats_url, username, password)
     try:
         driver = webdriver.Chrome('/usr/local/bin/chromedriver')
     except:
+        traceback.print_exc(file=stderr)
         stderr.write("I need a Chrome webdriver for Selenium. Please find it in the internet and put it here: /usr/local/bin/chromedriver.\n")
         exit(1)
     old_year = datetime.now().year - 2
